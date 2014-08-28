@@ -1,0 +1,8 @@
+c:\users\koen\documents\visual studio 2013\Projects\RTF\RTF\bin\Debug\RTF.exe.config
+c:\users\koen\documents\visual studio 2013\Projects\RTF\RTF\bin\Debug\RTF.exe
+c:\users\koen\documents\visual studio 2013\Projects\RTF\RTF\bin\Debug\RTF.pdb
+c:\users\koen\documents\visual studio 2013\Projects\RTF\RTF\bin\Debug\OpenTK.dll
+c:\users\koen\documents\visual studio 2013\Projects\RTF\RTF\bin\Debug\OpenTK.xml
+c:\users\koen\documents\visual studio 2013\Projects\RTF\RTF\obj\Debug\RTF.csprojResolveAssemblyReference.cache
+c:\users\koen\documents\visual studio 2013\Projects\RTF\RTF\obj\Debug\RTF.exe
+c:\users\koen\documents\visual studio 2013\Projects\RTF\RTF\obj\Debug\RTF.pdb
