@@ -158,6 +158,8 @@ namespace RTF
 			*/
 		}
 
+
+
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public int IX(int i, int j)
 		{
@@ -165,7 +167,7 @@ namespace RTF
 
 		}
 
-		void setBnd(int b, ref float[] x)
+		void setBnd(int b, float[] x)
 		{
 			for (int i = 1; i <= gridResolution; i++)
 			{
@@ -180,7 +182,7 @@ namespace RTF
 			x[IX(gridResolution + 1, gridResolution + 1)] = 0.5f * (x[IX(gridResolution, gridResolution + 1)] + x[IX(gridResolution + 1, gridResolution)]);
 		}
 
-		private void linearSolve(int b, ref float[] current, ref float[] prev, float a, float c)
+		private void linearSolve(int b, float[] current, float[] prev, float a, float c)
 		{
 			for (int k = 0; k < 20; k++)
 			{
@@ -188,16 +190,16 @@ namespace RTF
 				{
 					for (int j = 1; j <= gridResolution; j++)
 					{
-						current[IX(i, j)] = (prev[IX(i, j)] + a * 
+						current[IX(i, j)] = (prev[IX(i, j)] + a *
 							(current[IX(i - 1, j)] + current[IX(i + 1, j)] + current[IX(i, j - 1)] + current[IX(i, j + 1)]))
 							/ c;
 					}
 				}
-				setBnd(b, ref current);
+				setBnd(b, current);
 			}
 		}
 
-		void advect(int b, ref float[] current, ref float[] prev, ref float[] u, ref float[] v)
+		void advect(int b, float[] current, float[] prev, float[] u, float[] v)
 		{
 			int i0, j0, i1, j1;
 			float x, y, s0, t0, s1, t1, dt0;
@@ -210,41 +212,41 @@ namespace RTF
 					x = i - dt0 * u[IX(i, j)];
 					y = j - dt0 * v[IX(i, j)];
 
-					if (x < 0.5f) 
-						x = 0.5f; 
-					
-					if (x > gridResolution + 0.5f) 
-						x = gridResolution + 0.5f; 
-					i0 = (int)x; i1 = i0 + 1;
-					
-					if (y < 0.5f) 
-						y = 0.5f; 
-					
-					if (y > gridResolution + 0.5f) 
-						y = gridResolution + 0.5f; 
+					if (x < 0.5f)
+						x = 0.5f;
 
-					j0 = (int)y; 
+					if (x > gridResolution + 0.5f)
+						x = gridResolution + 0.5f;
+					i0 = (int)x; i1 = i0 + 1;
+
+					if (y < 0.5f)
+						y = 0.5f;
+
+					if (y > gridResolution + 0.5f)
+						y = gridResolution + 0.5f;
+
+					j0 = (int)y;
 					j1 = j0 + 1;
-					s1 = x - i0; 
-					s0 = 1 - s1; 
-					t1 = y - j0; 
+					s1 = x - i0;
+					s0 = 1 - s1;
+					t1 = y - j0;
 					t0 = 1 - t1;
-					
+
 					current[IX(i, j)] = s0 * (t0 * prev[IX(i0, j0)] + t1 * prev[IX(i0, j1)]) +
 								 s1 * (t0 * prev[IX(i1, j0)] + t1 * prev[IX(i1, j1)]);
 				}
 			}
-			setBnd(b, ref current);
+			setBnd(b, current);
 		}
 
 
-		private void diffuse(int b, ref float[] current, ref float[] prev, float rate)
+		private void diffuse(int b, float[] current, float[] prev, float rate)
 		{
 			float a = dt * rate * gridResolution * gridResolution;
-			linearSolve(b, ref current, ref prev, a, 1 + 4 * a);
+			linearSolve(b, current, prev, a, 1 + 4 * a);
 		}
 
-		
+
 
 		private void project()
 		{
@@ -256,10 +258,10 @@ namespace RTF
 					u_prev[IX(i, j)] = 0;
 				}
 			}
-			setBnd( 0, ref v_prev);
-			setBnd( 0, ref u_prev);
+			setBnd(0, v_prev);
+			setBnd(0, u_prev);
 
-			linearSolve(0, ref u_prev, ref v_prev, 1, 4);
+			linearSolve(0, u_prev, v_prev, 1, 4);
 
 			for (int i = 1; i <= gridResolution; i++)
 			{
@@ -270,40 +272,40 @@ namespace RTF
 				}
 			}
 
-			setBnd(1, ref u);
-			setBnd(2, ref v);
+			setBnd(1, u);
+			setBnd(2, v);
 		}
 
 		private void densityStep()
 		{
-			addSource(ref dens, ref dens_prev);
-			
-			swapBuffers(ref dens_prev, ref dens);
-			diffuse(0, ref dens, ref dens_prev, diffusionRate);
+			addSource(dens, dens_prev);
 
 			swapBuffers(ref dens_prev, ref dens);
-			advect(0, ref dens, ref dens_prev, ref u, ref v);
+			diffuse(0, dens, dens_prev, diffusionRate);
+
+			swapBuffers(ref dens_prev, ref dens);
+			advect(0, dens, dens_prev, u, v);
 		}
 
 		private void velocityStep()
 		{
 			// N, u, v, u_prev, v_prev, visc, dt
-			addSource(ref u, ref u_prev);
-			addSource(ref v, ref v_prev);
-			
+			addSource(u, u_prev);
+			addSource(v, v_prev);
+
 			swapBuffers(ref u_prev, ref u);
-			diffuse(1, ref u, ref u_prev, viscocity);
-			
+			diffuse(1, u, u_prev, viscocity);
+
 			swapBuffers(ref v_prev, ref v);
-			diffuse(2, ref v, ref v_prev, viscocity);
+			diffuse(2, v, v_prev, viscocity);
 
 			project();
-			
+
 			swapBuffers(ref u_prev, ref u);
 			swapBuffers(ref v_prev, ref v);
 
-			advect(1, ref u, ref u_prev, ref u_prev, ref v_prev);
-			advect(2, ref v, ref v_prev, ref u_prev, ref v_prev);
+			advect(1, u, u_prev, u_prev, v_prev);
+			advect(2, v, v_prev, u_prev, v_prev);
 
 			project();
 		}
@@ -317,7 +319,7 @@ namespace RTF
 			b = c;
 		}
 
-		private void addSource(ref float[] current, ref float[] prev)
+		private void addSource(float[] current, float[] prev)
 		{
 			// N X:u S:u_prev, dt
 			for (int i = 0; i < bufferSize; i++)
