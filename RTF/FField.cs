@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -13,25 +14,27 @@ namespace RTF
 {
 	class FField
 	{
-		public int gridResolution = 128; // N
-		public float dt = 0.1f; // deltaTime
-		public float diffusionRate = 0.0f ;// diffusionRate;
-		public float viscocity = 0.0f; // ~~
-		public float force = 5.0f; // scales the mouse movement that generate a force
-		public float source = 100.0f; // amount of density that will be deposited
-		
-		public float[] u;
- 		public float[] v;
-		public float[] dens;
-		
-		public float[] u_prev;
-		public float[] v_prev;
-		public float[] dens_prev;
+		private const int gridResolution = 128; // N
+		private const int gridResPlus2 = gridResolution + 2;
+		private float dt = 0.1f; // deltaTime
+		private const float diffusionRate = 0.001f;// diffusionRate;
+		private const float viscocity = 0.001f; // ~~
+		private const float force = 5.0f; // scales the mouse movement that generate a force
+		private const float source = 10000.0f; // amount of density that will be deposited
+		private const int lsStep = 20;
 
-		private int bufferSize;
+		private float[] u;
+		private float[] v;
+		private float[] dens;
 
-		private int pmX = 0;
-		private int pmY = 0;
+		private float[] u_prev;
+		private float[] v_prev;
+		private float[] dens_prev;
+
+		int bufferSize;
+
+		int pmX = 0;
+		int pmY = 0;
 
 		public FField()
 		{
@@ -52,7 +55,8 @@ namespace RTF
 			Array.Clear(v_prev, 0, bufferSize); // @32bit_warning
 			Array.Clear(dens_prev, 0, bufferSize); // @32bit_warning
 		}
-		private void handleInput()
+
+		void handleInput()
 		{
 			int mX = Window.active.Mouse.X;
 			int mY = Window.active.Mouse.Y;
@@ -82,7 +86,7 @@ namespace RTF
 
 			if (Window.active.Mouse[MouseButton.Right])
 			{
-				dens_prev[IX(i, j)] = source;
+				dens_prev[IX(i, j)] = source * dt;
 			}
 
 			pmX = mX;
@@ -98,7 +102,7 @@ namespace RTF
 			Array.Clear(dens_prev, 0, bufferSize);
 
 			handleInput();
-			
+
 			velocityStep();
 			densityStep();
 		}
@@ -137,7 +141,9 @@ namespace RTF
 
 			GL.End();
 
-			/*GL.Color4(1.0f, 0.0f, 0.0f, 0.2f);
+			/*
+			// Draw velocity
+			GL.Color4(1.0f, 0.0f, 0.0f, 0.2f);
 			GL.LineWidth(1.0f);
 
 			GL.Begin(PrimitiveType.Lines);
@@ -158,16 +164,13 @@ namespace RTF
 			*/
 		}
 
-
-
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public int IX(int i, int j)
+		public static int IX(int x, int y)
 		{
-			return (i) + (gridResolution + 2) * (j);
-
+			return gridResPlus2 * y + x;
 		}
 
-		void setBnd(int b, float[] x)
+		static void setBnd(int b, float[] x)
 		{
 			for (int i = 1; i <= gridResolution; i++)
 			{
@@ -182,21 +185,62 @@ namespace RTF
 			x[IX(gridResolution + 1, gridResolution + 1)] = 0.5f * (x[IX(gridResolution, gridResolution + 1)] + x[IX(gridResolution + 1, gridResolution)]);
 		}
 
-		private void linearSolve(int b, float[] current, float[] prev, float a, float c)
+		static void linearSolve(int b, float[] current, float[] previous, float a, float div)
 		{
-			for (int k = 0; k < 20; k++)
+			float[] cur = current;
+			float[] prev = previous;
+			float inverseC = (float)(1.0 / div);
+			float locA = a;
+			int locB = b;
+
+			int iterations = lsStep;			
+
+			if (locA != 0)
 			{
-				for (int i = 1; i <= gridResolution; i++)
+				for (int k = 0; k < iterations; k++)
 				{
-					for (int j = 1; j <= gridResolution; j++)
+					// Every C compiler will do loop reversal if it can prove no data-dependencys. The current C# Jitter wont do this
+					for (int x = gridResolution; x > 0; --x)
 					{
-						current[IX(i, j)] = (prev[IX(i, j)] + a *
-							(current[IX(i - 1, j)] + current[IX(i + 1, j)] + current[IX(i, j - 1)] + current[IX(i, j + 1)]))
-							/ c;
+						for (int y = gridResolution; y > 0; --y)
+						{
+							int i = IX(x, y);
+
+							float v = prev[i];
+
+							float s = cur[i - 1] +
+									  cur[i + 1] +
+									  cur[i - gridResPlus2] +
+									  cur[i + gridResPlus2];
+
+							v += locA * s;
+
+							cur[i] = v * inverseC;
+						}
 					}
 				}
-				setBnd(b, current);
 			}
+			else
+			{
+				iterations = 1; // There's no point doing "c[i] = v * inverseC" 3*20 times over every frame...
+				for (int k = 0; k < iterations; k++)
+				{
+					// Every C compiler will do loop reversal if it can prove no data-dependencys. The current C# Jitter wont do this
+					for (int x = gridResolution; x > 0; --x)
+					{
+						for (int y = gridResolution; y > 0; --y)
+						{
+							int i = IX(x, y);
+
+							float v = prev[i];
+
+							cur[i] = v * inverseC;
+						}
+					}
+				}
+			}
+
+			setBnd(locB, cur); // no data dependency so its moved out of the K loop.
 		}
 
 		void advect(int b, float[] current, float[] prev, float[] u, float[] v)
@@ -209,8 +253,10 @@ namespace RTF
 			{
 				for (int j = 1; j <= gridResolution; j++)
 				{
-					x = i - dt0 * u[IX(i, j)];
-					y = j - dt0 * v[IX(i, j)];
+					int ix1 = IX(i, j);
+
+					x = i - dt0 * u[ix1];
+					y = j - dt0 * v[ix1];
 
 					if (x < 0.5f)
 						x = 0.5f;
@@ -232,15 +278,14 @@ namespace RTF
 					t1 = y - j0;
 					t0 = 1 - t1;
 
-					current[IX(i, j)] = s0 * (t0 * prev[IX(i0, j0)] + t1 * prev[IX(i0, j1)]) +
+					current[ix1] = s0 * (t0 * prev[IX(i0, j0)] + t1 * prev[IX(i0, j1)]) +
 								 s1 * (t0 * prev[IX(i1, j0)] + t1 * prev[IX(i1, j1)]);
 				}
 			}
 			setBnd(b, current);
 		}
 
-
-		private void diffuse(int b, float[] current, float[] prev, float rate)
+		void diffuse(int b, float[] current, float[] prev, float rate)
 		{
 			float a = dt * rate * gridResolution * gridResolution;
 			linearSolve(b, current, prev, a, 1 + 4 * a);
@@ -248,7 +293,7 @@ namespace RTF
 
 
 
-		private void project()
+		void project()
 		{
 			for (int i = 1; i <= gridResolution; i++)
 			{
@@ -276,7 +321,7 @@ namespace RTF
 			setBnd(2, v);
 		}
 
-		private void densityStep()
+		void densityStep()
 		{
 			addSource(dens, dens_prev);
 
@@ -287,7 +332,7 @@ namespace RTF
 			advect(0, dens, dens_prev, u, v);
 		}
 
-		private void velocityStep()
+		void velocityStep()
 		{
 			// N, u, v, u_prev, v_prev, visc, dt
 			addSource(u, u_prev);
@@ -311,7 +356,7 @@ namespace RTF
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		private void swapBuffers(ref float[] a, ref float[] b)
+		static void swapBuffers(ref float[] a, ref float[] b)
 		{
 			float[] c;
 			c = a;
@@ -319,13 +364,12 @@ namespace RTF
 			b = c;
 		}
 
-		private void addSource(float[] current, float[] prev)
+		void addSource(float[] current, float[] prev)
 		{
 			// N X:u S:u_prev, dt
 			for (int i = 0; i < bufferSize; i++)
-			{
 				current[i] += dt * prev[i];
-			}
+
 		}
 	}
 }
